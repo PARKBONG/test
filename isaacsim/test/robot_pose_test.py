@@ -70,13 +70,13 @@ plane_params.restitution = 0.0
 gym.add_ground(sim, plane_params)
 
 # Asset Description
-asset_root = "../urdf"
+asset_root = "./urdf"
 robot_asset_file = "/ugv_gazebo_sim/scout/scout_description/urdf/scout_mini.urdf"
-env_asset_file = "/base_link_description/urdf/base_link.urdf"
+env_asset_file = "base_link_description/urdf/base_link.urdf"
 obstacle_asset_file = "/box_obstacle_description/urdf/box_obstacle.urdf"
 # Load texture from file
-texture_file = "../textures/texture_background_wall_paint_3.jpg"
-texture_handle = gym.create_texture_from_file(sim, os.path.join("../textures/", texture_file))
+texture_file = "./textures/texture_background_wall_paint_3.jpg"
+texture_handle = gym.create_texture_from_file(sim, os.path.join("", texture_file))
 
 # Environment light color
 # l_color = gymapi.Vec3(random.uniform(1, 1), random.uniform(1, 1), random.uniform(1, 1))
@@ -135,15 +135,16 @@ for i in range(num_envs):
     gym.set_rigid_body_color(env, env_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, env_color)
 
     # Obstacle Generate
-    obstacle_pose.p = gymapi.Vec3(1.5, 0.4, 0.0)
-    obstacle_handle = gym.create_actor(env, obstacle_asset, obstacle_pose, "obstacle", i ,0)
-    gym.set_rigid_body_color(env, obstacle_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, obstacle_color)
+    
+    # obstacle_pose.p = gymapi.Vec3(1.5, 0.4, 0.0)
+    # obstacle_handle = gym.create_actor(env, obstacle_asset, obstacle_pose, "obstacle", i ,0) # This create obstacle
 
     # Actor Generate
-    robot_pose.p = gymapi.Vec3(0.0, 0.0, 0.0)
+    robot_init = [0,0,0]
+    robot_pose.p = gymapi.Vec3(robot_init[0], robot_init[1], robot_init[2])
     robot_handle = gym.create_actor(env, robot_asset, robot_pose, "Scout_Mini", i, 0)
     gym.set_rigid_body_color(env, robot_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, robot_color)
-    gym.set_rigid_body_texture(env, robot_handle, 0, gymapi.MESH_VISUAL, env_floor)
+    # gym.set_rigid_body_texture(env, robot_handle, 0, gymapi.MESH_VISUAL, env_floor) # NO ENV_floor -> commented out
 
     # Set controller modes
     props = gym.get_actor_dof_properties(env, robot_handle)
@@ -158,6 +159,76 @@ for i in range(num_envs):
     # Unlike efforts, position and velocity targets don’t need to be set every frame, only when changing targets.
     gym.set_actor_dof_velocity_targets(env, robot_handle, (-2*math.pi, 2*math.pi, -2*math.pi, 2*math.pi))
     # gym.set_actor_dof_velocity_targets(env, robot_handle, vel_targets)
+
+    # Option 1 =======================================================================================
+    # robot_size = 0.2
+    # def gen_obstacle_handle(randomness=True):
+            
+    #     def find_value(box_size):
+
+    #         x_random = np.random.uniform(box_size[0], box_size[1])
+    #         z_random = np.random.uniform(box_size[2], box_size[3])
+    #         if ((robot_init[0] - robot_size) < x_random) and (x_random < (robot_init[0] + robot_size)):
+    #             if ((robot_init[2] - robot_size) < z_random) and (z_random < (robot_init[2] + robot_size)):
+    #                     x_random, z_random = find_value(box_size)
+    #         return x_random, z_random
+
+    #     if randomness:
+    #         box_size = [1, 2, -1, 1] #[x_min, x_max, z_min, z_max] # Find your best value white big box
+    #         x_random, z_random = find_value(box_size)
+    #         obstacle_pose.p = gymapi.Vec3(x_random, 0.4, z_random)
+    #     else : 
+    #         obstacle_pose.p = gymapi.Vec3(.5, 0.4, 0.0)
+
+    #     obstacle_handle = gym.create_actor(env, obstacle_asset, obstacle_pose, "obstacle", i ,0) # This create obstacle
+    #     return obstacle_handle
+
+    # n_obstacles = 2
+    # obstacle_handle_list = [gen_obstacle_handle() for i in range(n_obstacles)]
+
+    # Option 2 =====================================================================================
+    # White Box Size # Change properly!
+    x_min = -5
+    x_max = 5
+    z_min = -5
+    z_max = 5
+
+    # Robot init position # DO not change
+    x_list = [0]
+    z_list = [0]
+
+    norm = 1 # Car or Obstacle size # Change properly!
+
+    def get_norm1(x1,z1,x2,z2):
+        norm = np.sqrt((x1 - x2)**2 + (z1 - z2)**2)
+        return norm
+
+    def get_random(x_list,z_list):
+        x_random = np.random.uniform(x_min, x_max)
+        z_random = np.random.uniform(z_min, z_max)
+
+        for x,z in zip(x_list,z_list):
+            if get_norm1(x,z,x_random,z_random) < norm: 
+                x_random, z_random = get_random(x_list,z_list)
+        return x_random, z_random
+
+    n = 12
+    for i in range(n):
+        x_random, z_random = get_random(x_list,z_list)
+        x_list.append(x_random)
+        z_list.append(z_random)
+
+    obstacle_handle_list = []
+    x_list.pop(0) # Car position
+    z_list.pop(0)
+    for x,z in zip(x_list,z_list):
+        obstacle_pose.p = gymapi.Vec3(x, z, 0.4) # height = 0.4
+        obstacle_handle = gym.create_actor(env, obstacle_asset, obstacle_pose, "obstacle", i ,0) # This create obstacle
+        obstacle_handle_list.append(obstacle_handle)
+
+    # Set Color ========================================================================================
+    for obstacle_handle in obstacle_handle_list:
+        gym.set_rigid_body_color(env, obstacle_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, obstacle_color)
 
 # Camera Setting
 cam_pos = gymapi.Vec3(1.0, 0.0, 1.0)      # 멀리 보려면 z축 변경 가까이 보려면 x축 변경
@@ -181,6 +252,9 @@ while True:
     # step the physics
     gym.simulate(sim)
     gym.fetch_results(sim, True)
+
+    vel_targets = np.random.uniform(-2*math.pi, 2*math.pi, robot_num_dof).astype('f')
+    gym.set_actor_dof_velocity_targets(env, robot_handle, (-2*math.pi, 2*math.pi, -2*math.pi, 2*math.pi))
 
     # update graphics transforms
     gym.step_graphics(sim)
